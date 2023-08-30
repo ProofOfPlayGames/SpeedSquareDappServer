@@ -1,0 +1,6 @@
+.env
+s2/.env
+s1/.env
+s1/node_modules
+s2/node_modules
+s2/index.js
