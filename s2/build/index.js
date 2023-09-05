@@ -57,28 +57,15 @@ client.connect();
 const tokenProgramId = spl_token_1.TOKEN_PROGRAM_ID; //new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 const mintAddr = new web3_js_1.PublicKey(process.env.MINT_TOKEN_ADDR || "");
 const SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID = new web3_js_1.PublicKey(process.env.SPL_ATAP_ID || "");
-/*function findAssociatedTokenAddress(walletAddress: PublicKey, tokenMintAddress: PublicKey): PublicKey {
-    return PublicKey.findProgramAddressSync(
-        [
-            walletAddress.toBuffer(), // wallet address
-            TOKEN_PROGRAM_ID.toBuffer(),
-            tokenMintAddress.toBuffer(),
-        ],
-        SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID
-    )[0];
-}*/
 // Mint new token
 function mintToken(walletAddr, amount) {
     return __awaiter(this, void 0, void 0, function* () {
         try {
             const walletAddr_pubKeyObj = new web3_js_1.PublicKey(walletAddr);
-            // const walletATA = findAssociatedTokenAddress(new PublicKey(walletAddr), mintAddr);
-            console.log("1------");
             let ata = yield (0, spl_token_1.getAssociatedTokenAddress)(mintAddr, // mint
             walletAddr_pubKeyObj, // owner
-            true // allow owner off curve
+            false // allow owner off curve
             );
-            console.log("2---------");
             let tx = new web3_js_1.Transaction();
             let checkAccountExists = false;
             try {
@@ -92,13 +79,9 @@ function mintToken(walletAddr, amount) {
                 console.error('ATA does not exist:', error);
             }
             if (!checkAccountExists) {
-                tx.add((0, spl_token_1.createAssociatedTokenAccountInstruction)(
-                //connection,
-                //walletKeyPair,
-                walletKeyPair.publicKey, ata, walletAddr_pubKeyObj, mintAddr));
+                tx.add((0, spl_token_1.createAssociatedTokenAccountInstruction)(walletKeyPair.publicKey, ata, walletAddr_pubKeyObj, mintAddr));
             }
-            tx.add((0, spl_token_1.createMintToCheckedInstruction)(mintAddr, ata, //new PublicKey("CiL2siMDs6t2LVd5LdTuFJVbgePeas7KGgEYfPXXJTJ6"), //tokenAccount1Pubkey,
-            walletKeyPair.publicKey, // mint auth
+            tx.add((0, spl_token_1.createMintToCheckedInstruction)(mintAddr, ata, walletKeyPair.publicKey, // mint auth
             amount * 1000000000, // amount
             9 // decimals
             ));

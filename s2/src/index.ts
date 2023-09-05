@@ -5,10 +5,6 @@ import * as bs58 from 'bs58';
 import {getAssociatedTokenAddress, getAccount, createMintToCheckedInstruction, createAssociatedTokenAccountInstruction, TOKEN_PROGRAM_ID} from "@solana/spl-token";
 import { Client } from 'pg';
 
-
-
-
-
 dotenv.config();
 
 const app: Express = express();
@@ -29,40 +25,23 @@ const client = new Client(
 client.connect();
 
 // Token program ID (for Solana Devnet)
-const tokenProgramId = TOKEN_PROGRAM_ID; //new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+const tokenProgramId = TOKEN_PROGRAM_ID; 
 const mintAddr = new PublicKey(process.env.MINT_TOKEN_ADDR || "");
-
 
 const SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID: PublicKey = new PublicKey(
   process.env.SPL_ATAP_ID || "",
 );
 
-/*function findAssociatedTokenAddress(walletAddress: PublicKey, tokenMintAddress: PublicKey): PublicKey {
-    return PublicKey.findProgramAddressSync(
-        [
-            walletAddress.toBuffer(), // wallet address
-            TOKEN_PROGRAM_ID.toBuffer(),
-            tokenMintAddress.toBuffer(),
-        ],
-        SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID
-    )[0];
-}*/
-
-
-
 // Mint new token
 async function mintToken(walletAddr: string, amount: number) {
   try {
   const walletAddr_pubKeyObj = new PublicKey(walletAddr);
- // const walletATA = findAssociatedTokenAddress(new PublicKey(walletAddr), mintAddr);
   
- console.log("1------"); 
   let ata = await getAssociatedTokenAddress(
       mintAddr, // mint
       walletAddr_pubKeyObj, // owner
-      true // allow owner off curve
+      false // allow owner off curve
     ); 
-console.log("2---------");
   
   let tx = new Transaction();
 let checkAccountExists = false;
@@ -78,8 +57,6 @@ console.log(checkAccountExists);
 if(!checkAccountExists){
   tx.add(
     createAssociatedTokenAccountInstruction(
-      //connection,
-      //walletKeyPair,
       walletKeyPair.publicKey,
       ata,
       walletAddr_pubKeyObj,
@@ -91,7 +68,7 @@ if(!checkAccountExists){
 tx.add(
     createMintToCheckedInstruction(
       mintAddr,
-      ata, //new PublicKey("CiL2siMDs6t2LVd5LdTuFJVbgePeas7KGgEYfPXXJTJ6"), //tokenAccount1Pubkey,
+      ata,
       walletKeyPair.publicKey, // mint auth
       amount*1000000000, // amount
       9 // decimals
