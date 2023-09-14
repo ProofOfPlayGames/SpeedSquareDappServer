@@ -41,6 +41,8 @@ const web3_js_1 = require("@solana/web3.js");
 const bs58 = __importStar(require("bs58"));
 const spl_token_1 = require("@solana/spl-token");
 const pg_1 = require("pg");
+const fs = __importStar(require("fs"));
+const https = __importStar(require("https"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const port = process.env.PORT;
@@ -54,7 +56,7 @@ const client = new pg_1.Client({ host: process.env.PG_HOST,
     ssl: false });
 client.connect();
 // Token program ID (for Solana Devnet)
-const tokenProgramId = spl_token_1.TOKEN_PROGRAM_ID; //new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+const tokenProgramId = spl_token_1.TOKEN_PROGRAM_ID;
 const mintAddr = new web3_js_1.PublicKey(process.env.MINT_TOKEN_ADDR || "");
 const SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID = new web3_js_1.PublicKey(process.env.SPL_ATAP_ID || "");
 // Mint new token
@@ -95,18 +97,73 @@ function mintToken(walletAddr, amount) {
 }
 app.use(express_1.default.json());
 app.post('/score', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const amount = req.body.amount;
-    const walletAddr = req.body.walletAddr;
-    const res2 = yield client.query('SELECT * FROM users');
-    console.log(res2);
     try {
-        const mintingResponse = yield mintToken(walletAddr, amount);
-        return res.json({ message: 'Token minted successfully.', transaction: mintingResponse });
+        const amount = req.body.amount;
+        const walletAddr = req.body.walletAddr;
+        console.log(req.body);
+        let sql = "";
+        sql = sql + "INSERT INTO users (pub_key) SELECT ('" + walletAddr + "') WHERE NOT EXISTS (SELECT pub_key FROM users WHERE pub_key='" + walletAddr + "');";
+        sql = sql + "UPDATE users SET high_score=" + amount + " WHERE pub_key='" + walletAddr + "' AND high_score<" + amount + ";";
+        sql = sql + "UPDATE users SET total_score=total_score+" + amount + ", unclaimed_tokens=unclaimed_tokens+" + amount + " WHERE pub_key='" + walletAddr + "';";
+        sql = sql + "UPDATE users SET games_played=games_played+1 WHERE pub_key='" + walletAddr + "';";
+        console.log("-e-e-e-e-e-e-e-e-e-e-e");
+        const res2 = yield client.query(sql);
+        console.log(res2);
+        return res.send({ message: 'Scores updated successfully.' });
     }
     catch (error) {
-        return res.status(500).json({ error: 'Error minting token.' });
+        return res.status(500).json({ error: 'Error updating scores.' });
     }
 }));
-app.listen(port, () => {
+app.post('/claim', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const walletAddr = req.body.walletAddr;
+        const res2 = yield client.query("SELECT unclaimed_tokens, claimed_today FROM users WHERE pub_key='" + walletAddr + "';");
+        const unclaimed_tokens = res2.rows[0].unclaimed_tokens;
+        const claimed_today = res2.rows[0].claimed_today;
+        if (!claimed_today) {
+            const res3 = yield client.query("UPDATE users SET unclaimed_tokens=0, claimed_today=true WHERE pub_key='" + walletAddr + "';");
+            const mintingResponse = yield mintToken(walletAddr, unclaimed_tokens);
+            return res.json({ message: 'Tokens minted successfully.', transaction: mintingResponse });
+        }
+        else {
+            return res.status(500).json({ error: 'Claimed today already. No tokens minted.' });
+        }
+    }
+    catch (error) {
+        return res.status(500).json({ error: 'Error claiming tokens.' });
+    }
+}));
+app.get('/player_stats', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const walletAddr = req.body.walletAddr;
+        const res2 = yield client.query("SELECT games_played, high_score, total_score FROM users WHERE pub_key='" + walletAddr + "';");
+        const games_played = res2.rows[0].games_played;
+        const high_score = res2.rows[0].high_score;
+        const total_score = res2.rows[0].total_score;
+        console.log({ games_played: games_played, high_score: high_score, total_score: total_score });
+        return res.send({ games_played: games_played, high_score: high_score, total_score: total_score });
+    }
+    catch (error) {
+        return res.status(500).json({ error: 'Error getting player stats.' });
+    }
+}));
+app.get('/claim_status', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const walletAddr = req.body.walletAddr;
+        const res2 = yield client.query("SELECT claimed_today, unclaimed_tokens FROM users WHERE pub_key='" + walletAddr + "';");
+        const claimed_today = res2.rows[0].claimed_today;
+        const unclaimed_tokens = res2.rows[0].unclaimed_tokens;
+        return res.send({ claimed_today: claimed_today, unclaimed_tokens: unclaimed_tokens });
+    }
+    catch (error) {
+        return res.status(500).json({ error: 'Error getting claim status.' });
+    }
+}));
+https
+    .createServer({
+    key: fs.readFileSync("server.key"),
+    cert: fs.readFileSync("server.cert"),
+}, app).listen(port, () => {
     console.log(`Server is running on port ${port}`);
 });
