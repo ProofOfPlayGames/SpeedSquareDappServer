@@ -7,6 +7,7 @@ import { Client } from 'pg';
 import * as fs from 'fs';
 import * as https from "https";
 import * as crypto from "crypto";
+import * as encrypt from "./encrypt";
 
 dotenv.config();
 
@@ -14,7 +15,7 @@ const app: Express = express();
 const port = process.env.PORT;
 const connection = new Connection(process.env.SOL_NETWORK || "", 'confirmed');
 const walletKeyPair = Keypair.fromSecretKey(
- bs58.decode(process.env.WALLET_SPK as string)
+    bs58.decode(process.env.WALLET_SPK as string)
 ); 
  
 const client = new Client(
@@ -34,11 +35,6 @@ const mintAddr = new PublicKey(process.env.MINT_TOKEN_ADDR || "");
 const SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID: PublicKey = new PublicKey(
   process.env.SPL_ATAP_ID || "",
 );
-
-
-const publicKey = fs.readFileSync(process.env.PUBLIC_KEY!,{ encoding: 'utf8', flag: 'r' }).toString();
-const privateKey = fs.readFileSync(process.env.PRIVATE_KEY!,{ encoding: 'utf8', flag: 'r' }).toString();
-
 
 // Mint new token
 async function mintToken(walletAddr: string, amount: number) {
@@ -90,44 +86,13 @@ tx.add(
   }
 }
 
-function encryptData (data: string): Buffer {
-    return crypto.publicEncrypt(
-      {
-        key: publicKey,
-        padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-        oaepHash: "sha256",
-      },
-      // We convert the data string to a buffer using `Buffer.from`
-      Buffer.from(data)
-    )
-};
-
-function decryptData (encryptedData: string): Buffer {
-    return crypto.privateDecrypt(
-      {
-        key: privateKey,
-        // In order to decrypt the data, we need to specify the
-        // same hashing function and padding scheme that we used to
-        // encrypt the data in the previous step
-        padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-        oaepHash: "sha256",
-      },
-      Buffer.from(encryptedData, "hex")
-    )
-};
-
-function toHexString(bytes: Buffer): string {
-  return Array.from(bytes, (byte) => {
-    return ('0' + (byte & 0xff).toString(16)).slice(-2);
-  }).join('');
-};
 
 app.use(express.json());
 
 
 app.post('/encrypt', async (req: Request, res: Response) => {
   try {
-    return res.send({ message: toHexString(encryptData(req.body.amount))});
+    return res.send({ message: encrypt.toHexString(encrypt.encryptDataRSA(req.body.amount))});
   } catch (error) {
       return res.status(500).json({ error: 'Error encrypting.' });
   }
@@ -136,7 +101,7 @@ app.post('/encrypt', async (req: Request, res: Response) => {
 app.post('/decrypt', async (req: Request, res: Response) => {
   //try {
     console.log(req.body.amount);
-    const dec = decryptData(req.body.amount).toString();
+    const dec = encrypt.decryptDataRSA(req.body.amount).toString();
     console.log(dec);
     return res.send({ message: dec});
   //} catch (error) {
@@ -146,6 +111,7 @@ app.post('/decrypt', async (req: Request, res: Response) => {
 
 app.post('/score', async (req: Request, res: Response) => {
   try {
+    console.log(req);
     const amount = req.body.amount;
     const walletAddr = req.body.walletAddr;
     console.log(req.body);
@@ -219,13 +185,24 @@ app.get('/leaderboard', async (req: Request, res: Response) => {
 
 app.post('/login', async (req: Request, res: Response) => {
   try {
-    const username = req.body.username;
-    const password = req.body.password;
-    const login_token = makeid(72);
+    console.log("mehhhhhhhh");
+    const msg = req.body.msg;
+    console.log("msglogin: "+msg);
+    const epoch = req.body.epoch;
+    console.log("epoch: "+epoch);
+    let x = encrypt.decryptLoginDataAES(epoch, msg);
+    console.log(x);
+    let json = JSON.parse(x);
+    const username = json.username;
+    const password = json.password;
+    const login_token = makeid(48);
     const res3 = await client.query("SELECT username, password FROM users WHERE username='" + username + "' AND password='" + password + "';");
     if(res3.rows && res3.rows.length > 0){
+      console.log(".............4..............");
       const res2 = await client.query("UPDATE users SET login_token='" + login_token + "' where username='" + username + "';");
-      return res.send({login_token: login_token});
+      let encRes = encrypt.encryptLoginDataAES(username, epoch, login_token);
+      console.log(encRes);
+      return res.send({encRes: encRes});
     }else{
       return res.status(501).json({ error: 'Wrong login info moron' });
     }
