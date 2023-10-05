@@ -4,4 +4,4 @@ index.js
 src/encrypt.ts
 server.cert
 server.key
-
+build/
