@@ -111,23 +111,26 @@ app.post('/decrypt', async (req: Request, res: Response) => {
 
 app.post('/score', async (req: Request, res: Response) => {
   try {
-//    console.log(req);
-    //const score = req.body.score;
-    console.log("ooooooo");
-    const username = req.body.username;
-    console.log("lplplplplp");
-    const res3 = await client.query("SELECT login_token from users WHERE username='" + username + "';");
-    //console.log(res3);
+    let username = req.body.username;
+    let pub_key = req.body.pub_key;
+    let sql3 = "";
+    if (!username) {
+	sql3 = "SELECT login_token, username from users WHERE pub_key='" + pub_key + "';";
+    } else {
+	sql3 = "SELECT login_token from users WHERE username='" + username + "';";
+    }
+    const res3 = await client.query(sql3);
     const loginT = res3.rows[0].login_token;
-    console.log("loin_token: " + loginT);
+    if (res3.rows[0].username) {
+	username = res3.rows[0].username;
+    }
     const json = JSON.parse(encrypt.decryptGeneral(loginT, req.body.msg));
-    console.log("json");
-   console.log(json); 
    const score = json["score"];
 
     let sql = "";
     //sql = sql + "INSERT INTO users (pub_key) SELECT ('" + walletAddr + "') WHERE NOT EXISTS (SELECT pub_key FROM users WHERE pub_key='" + walletAddr + "');";
     sql = sql + "UPDATE speed_square SET high_score=" + score + " WHERE username='" + username + "' AND high_score<" + score + ";";
+    sql = sql + "UPDATE speed_square SET today_high_score=" + score + " WHERE username='" + username + "' AND today_high_score<" + score + ";";
     sql = sql + "UPDATE speed_square SET total_score=total_score+" + score + " WHERE username='" + username + "';";
     sql = sql + "UPDATE speed_square SET today_score=today_score+" + score + " WHERE username='" + username + "';";
     sql = sql + "UPDATE speed_square SET total_games=total_games+1 WHERE username='" + username + "';";
@@ -164,7 +167,6 @@ app.get('/player_stats', async (req: Request, res: Response) => {
     const games_played = res2.rows[0].games_played;
     const high_score = res2.rows[0].high_score;
     const total_score = res2.rows[0].total_score;
-    //console.log({ games_played: games_played, high_score: high_score, total_score: total_score});
     return res.send({ games_played: games_played, high_score: high_score, total_score: total_score});
   } catch (error) {
       return res.status(500).json({ error: 'Error getting player stats.' });
@@ -187,7 +189,7 @@ app.get('/player_stats', async (req: Request, res: Response) => {
 
 app.get('/leaderboard', async (req: Request, res: Response) => {
   try {
-    const res2 = await client.query("SELECT username, high_score FROM speed_square;");
+    const res2 = await client.query("SELECT username, high_score FROM speed_square ORDER BY high_score DESC;");
     return res.send(res2.rows);
   } catch (error) {
       return res.status(500).json({ error: 'Error getting claim status.' });
@@ -195,23 +197,18 @@ app.get('/leaderboard', async (req: Request, res: Response) => {
 });
 
 
-async function sign_up(username: string, password: string, email: string, signature: string, pub_key: string, makeIdUsername: string): number {
+async function sign_up(username: string, password: string, email: string, signature: string, pub_key: string, makeIdUsername: string): Promise<number> {
     try {
-    console.log("----- 1 ----");
     let sql = "";
     if (!pub_key || !signature) {
-	    console.log("p4");
-        sql = "INSERT INTO users (username, password, email, signature, pub_key) SELECT '" + username + "', '" + password + "', '" + email + "', '', '' WHERE NOT EXISTS (SELECT username FROM users WHERE username='" + username + "');";
-        sql = sql + "INSERT INTO speed_square (high_score, today_score, total_score, today_games, total_games, username) SELECT 0, 0, 0, 0, 0, '" + username + "' WHERE NOT EXISTS (SELECT username FROM speed_square WHERE username='" + username + "');";
+	    sql = "INSERT INTO speed_square (high_score, today_score, total_score, today_games, total_games, username) SELECT 0, 0, 0, 0, 0, '" + username + "' WHERE NOT EXISTS (SELECT username FROM speed_square WHERE username='" + username + "');";
+        sql = sql + "INSERT INTO users (username, password, email, signature, pub_key) SELECT '" + username + "', '" + password + "', '" + email + "', '', '' WHERE NOT EXISTS (SELECT username FROM users WHERE username='" + username + "' OR email='" + email + "');";
     } else {
-	    console.log("p3");
 	    //TODO verify signature and public key match cryptographically
-	sql = "INSERT INTO users (username, password, email, signature, pub_key) SELECT '" + makeIdUsername + "', '', '', '" + signature + "', '" + pub_key + "' WHERE NOT EXISTS (SELECT username FROM users WHERE username='" + makeIdUsername + "' OR pub_key='" + pub_key + "');";
-	sql = sql + "INSERT INTO speed_square (high_score, today_score, total_score, today_games, total_games, username) SELECT 0, 0, 0, 0, 0, '" + makeIdUsername + "' WHERE NOT EXISTS (SELECT username FROM users WHERE username='" + makeIdUsername + "' OR pub_key='" + pub_key + "');";
+	sql = "INSERT INTO speed_square (high_score, today_score, total_score, today_games, total_games, username) SELECT 0, 0, 0, 0, 0, '" + makeIdUsername + "' WHERE NOT EXISTS (SELECT username FROM users WHERE username='" + makeIdUsername + "' OR pub_key='" + pub_key + "');";
+    	    sql = sql + "INSERT INTO users (username, password, email, signature, pub_key) SELECT '" + makeIdUsername + "', '', '', '" + signature + "', '" + pub_key + "' WHERE NOT EXISTS (SELECT username FROM users WHERE username='" + makeIdUsername + "' OR pub_key='" + pub_key + "');";
     }
     const res3 = await client.query(sql);
-    console.log("------2-----");
-    console.log(res3);
     return res3.rowCount; //rows.length;
     }catch (error) {
       console.log(error);
@@ -222,7 +219,6 @@ async function sign_up(username: string, password: string, email: string, signat
 
 app.post('/signup', async (req: Request, res: Response) => {
   try {
-	  console.log("------- signup -----");
     const msg = req.body.msg;
     const epoch = req.body.epoch;
     let x = encrypt.decryptLoginDataAES(epoch, msg);
@@ -232,7 +228,7 @@ app.post('/signup', async (req: Request, res: Response) => {
     const email = json.email;
     const signature = json.signature;
     const pub_key = json.pub_key;
-    const inserted = await sign_up(username, password, email, signature, pub_key, "user"+makeid(18));
+    const inserted = await sign_up(username, password, email, signature, pub_key, pub_key).then(value => {return value;}); //"user"+makeid(18)
     if(inserted > 0){
       return res.send({success: true});
     }else{
@@ -246,38 +242,34 @@ app.post('/signup', async (req: Request, res: Response) => {
 
 app.post('/login', async (req: Request, res: Response) => {
   try {
-    //console.log("mehhhhhhhh");
     const msg = req.body.msg;
-   // console.log("msglogin: "+msg);
     const epoch = req.body.epoch;
-   // console.log("epoch: "+epoch);
     let x = encrypt.decryptLoginDataAES(epoch, msg);
-   // console.log(x);
     let json = JSON.parse(x);
-    console.log("pizza6");
-    console.log(json);
     const username = json.username;
     const password = json.password;
-    console.log("pizza7");
     const signature = json.signature;
     const pub_key = json.pub_key;
+    const email = json.email;
     const login_token = makeid(48);
-    const makeIdUsername = "user"+makeid(18);
+    const makeIdUsername = pub_key; //"user"+makeid(18);
     let sql1 = "";
-    console.log("pizza8");
-    if(!signature || !pub_key){
+    console.log(email);
+   if (email != null){
+	    console.log("banana");
+	await sign_up(username, password, email, null, null, username);
 	sql1 = "SELECT username FROM users WHERE (username='" + username + "' OR email='" + username + "') AND password='" + password + "';";
+    } else 
+	    if(!signature || !pub_key){
+	console.log("wwwwwww");
+	    sql1 = "SELECT username FROM users WHERE (username='" + username + "' OR email='" + username + "') AND password='" + password + "';";
+    	console.log(sql1);
     }else{
-	    console.log("pizza1");
 	await sign_up(username, password, "", signature, pub_key, makeIdUsername);  
 	sql1 = "SELECT username FROM users WHERE signature='" + signature + "' AND pub_key='" + pub_key + "';";
-	console.log("pizza2");
     }
     const res3 = await client.query(sql1);
-console.log("pizza3");
     if(res3.rows.length > 0){
-	    console.log("pizza4");
-      console.log(".............4..............");
       let sql2 = "";
       let usernameOrPubKey = "";
       if(!signature || !pub_key){
@@ -287,10 +279,8 @@ console.log("pizza3");
 	sql2 = "UPDATE users SET login_token='" + login_token + "' WHERE pub_key='" + pub_key + "';";
         usernameOrPubKey = pub_key;
       }
-      console.log("pizza5");
       const res2 = await client.query(sql2);
       let encRes = encrypt.encryptLoginDataAES(usernameOrPubKey, epoch, login_token);
-     // console.log(encRes);
       return res.send({encRes: encRes});
     }else{
       console.log("1");
@@ -302,6 +292,38 @@ console.log("pizza3");
   }
 });
 
+
+app.post('/deleteUser', async (req: Request, res: Response) => {
+  try {
+    let username = req.body.username;
+    let pub_key = req.body.pub_key;
+    let sql3 = "";
+    if (!username) {
+        sql3 = "SELECT login_token, username from users WHERE pub_key='" + pub_key + "';";
+    } else {
+        sql3 = "SELECT login_token from users WHERE username='" + username + "';";
+    }
+    const res3 = await client.query(sql3);
+    const loginT = res3.rows[0].login_token;
+    if (res3.rows[0].username) {
+        username = res3.rows[0].username;
+    }
+    const json = JSON.parse(encrypt.decryptGeneral(loginT, req.body.msg));
+   const score = json["score"];
+
+   if(score == 1738){
+    let sql = "";
+    sql = sql + "DELETE FROM users WHERE username='" + username + "';";
+    sql = sql + "DELETE FROM speed_square WHERE username='" + username + "';";
+    const res2 = await client.query(sql);
+    return res.send({ message: 'Successfully deleted user.'});
+   }else{
+	return res.status(500).json({ error: 'Error deleting user2.' });
+   }
+  } catch (error) {
+      return res.status(500).json({ error: 'Error deleting user.' });
+  }
+});
 
 app.use(express.static(__dirname + '/public'));
 
